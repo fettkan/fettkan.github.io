@@ -1,5 +1,128 @@
-<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>fkn Clips</title><style>body{margin:0;background:#0b0708;color:#eee;font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center}main{max-width:640px;padding:24px}h1{color:#8b1e2d}a{color:#c9485b}</style></head>
-<body><main><h1>fkn Clips</h1><p>fkn ist ein privates Tool, mit dem kurze Clips aus Livestreams (mit Erlaubnis der Streamer) geschnitten und auf den eigenen Kanälen von fkn auf YouTube und TikTok veröffentlicht werden.</p>
-<p>fkn is a private tool that edits short clips from livestreams (with the streamers' permission) and publishes them to fkn's own YouTube and TikTok accounts.</p>
-<p><a href="terms.html">Nutzungsbedingungen / Terms of Service</a> · <a href="privacy.html">Datenschutz / Privacy Policy</a></p></main></body></html>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>fkn Clips</title><link rel="icon" href="app-icon-1024.png"><style>body{margin:0;background:#0b0708;min-height:100vh}
+footer{max-width:980px;margin:0 auto;padding:8px 16px 32px;font-family:system-ui,sans-serif;color:#9a8f94;font-size:13px}footer a{color:#c9485b}</style></head>
+<body><div id="app"><p style="color:#eee;font-family:system-ui;padding:24px">Loading fkn Clips …</p></div>
+<footer><p>fkn Clips is a private tool that edits short clips from livestreams (with the streamers' permission) and publishes them to fkn's own YouTube and TikTok accounts.</p>
+<p><a href="terms.html">Terms of Service</a> · <a href="privacy.html">Privacy Policy</a></p></footer>
+<script>
+/* fkn Clips – TikTok-Web-App (eingebunden von https://fettkan.github.io/app.html, Daten vom lokalen Dashboard) */
+(function () {
+  const API = "http://localhost:8090";
+  const $ = q => document.querySelector(q);
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const api = async (p, o = {}) => { const r = await fetch(API + p, {headers: o.body ? {"Content-Type": "application/json"} : {}, ...o});
+    const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || r.statusText); return j; };
+  const PRIV = {PUBLIC_TO_EVERYONE: "Everyone", MUTUAL_FOLLOW_FRIENDS: "Friends", FOLLOWER_OF_CREATOR: "Followers", SELF_ONLY: "Only me"};
+  const ST = {processing: "Processing on TikTok…", done: "Posted to TikTok", inbox: "Sent to TikTok inbox", failed: "Failed"};
+  const css = `
+  #app{max-width:980px;margin:0 auto;padding:24px 16px;font-family:system-ui,sans-serif;color:#eee}
+  #app h1{color:#c9485b;margin:0 0 4px}#app .sub{color:#9a8f94;margin:0 0 20px}
+  .card{background:#181416;border:1px solid #2a2326;border-radius:14px;padding:18px;margin-bottom:16px}
+  .row{display:flex;gap:14px;align-items:center;flex-wrap:wrap}.grow{flex:1}
+  .btn{background:#2a2326;color:#eee;border:0;border-radius:10px;padding:10px 16px;font-weight:600;cursor:pointer}
+  .btn.p{background:#c23a62}.btn:disabled{opacity:.45;cursor:not-allowed}
+  .mut{color:#9a8f94;font-size:13px}.clip{display:flex;gap:14px;align-items:center;padding:12px 0;border-top:1px solid #2a2326}
+  .clip video{width:62px;aspect-ratio:9/16;border-radius:8px;background:#000}
+  .stat{background:#1f1a1c;border-radius:10px;padding:10px 14px;min-width:110px}.stat b{display:block;font-size:20px}
+  .mask{position:fixed;inset:0;background:rgba(0,0,0,.65);display:none;place-items:center;z-index:9}
+  .dlg{background:#181416;border:1px solid #3a3034;border-radius:16px;padding:20px;width:min(760px,94vw)}
+  .dlg label{display:block;font-size:13px;color:#cfc6ca;margin:12px 0 6px}.dlg textarea,.dlg select{width:100%;background:#0e0c0d;color:#eee;border:1px solid #3a3034;border-radius:8px;padding:8px}
+  .chk label{display:inline-flex;gap:6px;margin-right:18px;color:#eee}.err{color:#ef6b6b;font-size:13px}`;
+  document.head.insertAdjacentHTML("beforeend", `<style>${css}</style>`);
+  const root = $("#app");
+  root.innerHTML = `<h1>fkn Clips</h1><p class="sub">Post my approved clips to my own TikTok account.</p>
+    <div class="card" id="acc"></div><div class="card"><h3 style="margin:0 0 6px">Clips ready to post</h3><div id="clips" class="mut">Loading…</div></div>
+    <div class="mask" id="mask"><div class="dlg">
+      <div class="row"><h3 style="margin:0">Post to TikTok</h3><div class="grow"></div><span id="who" class="mut"></span></div>
+      <div class="row" style="align-items:flex-start;margin-top:10px">
+        <video id="prev" controls playsinline style="width:210px;aspect-ratio:9/16;background:#000;border-radius:10px"></video>
+        <div class="grow" style="min-width:260px">
+          <label>Caption</label><textarea id="cap" rows="3" maxlength="2200"></textarea>
+          <label>Who can view this video</label><select id="priv"></select>
+          <label>Allow users to</label>
+          <div class="chk"><label><input type="checkbox" id="com">Comment</label><label><input type="checkbox" id="duet">Duet</label><label><input type="checkbox" id="stitch">Stitch</label></div>
+          <label><input type="checkbox" id="disc"> Disclose video content</label>
+          <div id="discBox" class="chk" style="display:none;padding-left:4px">
+            <label><input type="checkbox" id="own">Your brand</label><label><input type="checkbox" id="brand">Branded content</label>
+            <div class="mut" id="discHint" style="margin-top:6px"></div></div>
+          <p class="mut" id="consent" style="margin-top:12px"></p><p class="err" id="err"></p>
+        </div></div>
+      <div class="row" style="justify-content:flex-end;margin-top:8px"><button class="btn" id="cancel">Cancel</button><button class="btn p" id="post" disabled>Post</button></div>
+    </div></div>`;
+
+  async function account() {
+    let t; try { t = await api("/api/tiktok"); } catch (e) {
+      $("#acc").innerHTML = `<b>Connecting to your fkn Clips server…</b><p class="mut">fkn Clips runs on your own computer (localhost:8090). Make sure it is running. If your browser asks to allow access to devices on your local network, click <b>Allow</b>, then reload.</p>`; return null; }
+    const s = t.stats || {};
+    $("#acc").innerHTML = `<div class="row"><div class="grow"><b>TikTok account</b><div class="mut">${t.connected ? "Connected as <b>" + esc(t.user || "") + "</b>" : "Not connected"}</div></div>
+      ${t.connected ? `<button class="btn" id="disc2">Disconnect</button>` : `<button class="btn p" id="conn">Connect with TikTok</button>`}</div>
+      ${t.connected ? `<div class="row" style="margin-top:14px">
+        <div class="stat"><span class="mut">Followers</span><b>${s.followers ?? "–"}</b></div>
+        <div class="stat"><span class="mut">Likes</span><b>${s.likes ?? "–"}</b></div>
+        <div class="stat"><span class="mut">Videos</span><b>${s.videos ?? "–"}</b></div>
+        <div class="stat"><span class="mut">Views (last 20)</span><b>${s.views ?? "–"}</b></div>
+        <button class="btn" id="ref">Refresh stats</button></div>` : ""}`;
+    if ($("#conn")) $("#conn").onclick = () => { location.href = API + "/api/tiktok/connect?back=" + encodeURIComponent(location.href.split("#")[0]); };
+    if ($("#disc2")) $("#disc2").onclick = async () => { await api("/api/tiktok/disconnect", {method: "POST"}); load(); };
+    if ($("#ref")) $("#ref").onclick = async () => { await api("/api/tiktok/stats", {method: "POST"}); load(); };
+    return t;
+  }
+
+  async function clips(t) {
+    let a = [], b = [];
+    try { a = await api("/api/clips?status=approved"); b = await api("/api/clips?status=published"); } catch (e) {}
+    const list = [...a, ...b];
+    window._ttClips = list;
+    $("#clips").innerHTML = list.length ? list.map(c => `<div class="clip">
+        <video src="${esc(c.video)}" muted preload="metadata"></video>
+        <div class="grow"><b>${esc(c.title)}</b><div class="mut">${c.tt_status ? esc(ST[c.tt_status] || c.tt_status) : "Not posted yet"}${c.tt_error ? " – " + esc(c.tt_error) : ""}</div></div>
+        <button class="btn p" data-id="${c.id}" ${t && t.connected ? "" : "disabled"}>Post to TikTok</button></div>`).join("")
+      : "No approved clips yet.";
+    document.querySelectorAll("#clips [data-id]").forEach(x => x.onclick = () => openPost(list.find(c => c.id === +x.dataset.id)));
+  }
+
+  async function openPost(c) {
+    $("#err").textContent = ""; $("#mask").style.display = "grid";
+    $("#prev").src = c.video; $("#cap").value = (c.title || "") + " #marli #fyp #twitch #clips";
+    ["#com","#duet","#stitch","#disc","#own","#brand"].forEach(q => { $(q).checked = false; $(q).disabled = false; });
+    $("#discBox").style.display = "none";
+    let ci; try { ci = await api("/api/tiktok/creator"); } catch (e) { $("#err").textContent = e.message; return; }
+    $("#who").innerHTML = `${ci.creator_avatar_url ? `<img src="${esc(ci.creator_avatar_url)}" style="width:26px;height:26px;border-radius:50%;vertical-align:middle"> ` : ""}Posting to <b>${esc(ci.creator_nickname || ci.creator_username)}</b>`;
+    const sel = $("#priv");
+    sel.innerHTML = `<option value="" selected disabled>Select who can view</option>` + (ci.privacy_level_options || []).map(o => `<option value="${o}">${PRIV[o] || o}</option>`).join("");
+    $("#com").disabled = !!ci.comment_disabled; $("#duet").disabled = !!ci.duet_disabled; $("#stitch").disabled = !!ci.stitch_disabled;
+    const maxd = ci.max_video_post_duration_sec;
+    const upd = () => {
+      const d = $("#disc").checked, own = $("#own").checked, br = $("#brand").checked;
+      $("#discBox").style.display = d ? "block" : "none";
+      const so = [...sel.options].find(o => o.value === "SELF_ONLY");
+      if (so) { so.disabled = d && br; so.title = d && br ? "Branded content visibility cannot be set to private." : ""; if (d && br && sel.value === "SELF_ONLY") sel.value = ""; }
+      $("#discHint").textContent = d ? (own && br ? "Your video will be labeled as 'Paid partnership'." : br ? "Your video will be labeled as 'Paid partnership'." : own ? "Your video will be labeled as 'Promotional content'." : "Select at least one option.") : "";
+      $("#consent").innerHTML = (d && br ? "By posting, you agree to TikTok's <a href='https://www.tiktok.com/legal/page/global/bc-policy/en' target='_blank'>Branded Content Policy</a> and <a href='https://www.tiktok.com/legal/page/global/music-usage-confirmation/en' target='_blank'>Music Usage Confirmation</a>."
+        : "By posting, you agree to TikTok's <a href='https://www.tiktok.com/legal/page/global/music-usage-confirmation/en' target='_blank'>Music Usage Confirmation</a>.")
+        + " After posting it may take a few minutes for the video to appear on your profile.";
+      const long = maxd && $("#prev").duration && $("#prev").duration > maxd;
+      if (long) $("#err").textContent = `This video is longer than the ${maxd} s allowed for your account.`;
+      $("#post").disabled = !sel.value || (d && !own && !br) || long;
+    };
+    ["#priv","#disc","#own","#brand"].forEach(q => $(q).onchange = upd); $("#prev").onloadedmetadata = upd; upd();
+    $("#cancel").onclick = () => { $("#mask").style.display = "none"; $("#prev").pause(); };
+    $("#post").onclick = async () => {
+      $("#post").disabled = true; $("#err").textContent = "Uploading…";
+      try {
+        await api(`/api/tiktok/post/${c.id}`, {method: "POST", body: JSON.stringify({title: $("#cap").value, privacy_level: sel.value,
+          allow_comment: $("#com").checked, allow_duet: $("#duet").checked, allow_stitch: $("#stitch").checked,
+          brand_organic: $("#disc").checked && $("#own").checked, branded_content: $("#disc").checked && $("#brand").checked})});
+        $("#mask").style.display = "none"; $("#prev").pause();
+        alertBox("Sent to TikTok. It may take a few minutes until the video appears on your profile."); load();
+      } catch (e) { $("#err").textContent = "Error: " + e.message; $("#post").disabled = false; }
+    };
+  }
+  function alertBox(m) { const d = document.createElement("div"); d.textContent = m;
+    d.style.cssText = "position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#c23a62;color:#fff;padding:12px 18px;border-radius:10px;z-index:10";
+    document.body.appendChild(d); setTimeout(() => d.remove(), 6000); }
+  async function load() { const t = await account(); await clips(t); }
+  load(); setInterval(() => { if ($("#mask").style.display !== "grid") load(); }, 20000);
+})();
+
+</script></body></html>
