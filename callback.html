@@ -1,0 +1,9 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><title>fkn – TikTok verbunden</title>
+<style>body{background:#0b0708;color:#eee;font-family:system-ui,sans-serif;padding:40px}a{color:#c9485b}</style></head>
+<body><p>Verbinde mit dem fkn-Dashboard ...</p>
+<script>
+// TikTok leitet hierher (https). Weiter an das lokale Dashboard auf demselben PC.
+var t = "http://localhost:8090/api/tiktok/callback" + window.location.search;
+document.write('<p>Falls nichts passiert: <a href="' + t + '">hier klicken</a></p>');
+window.location.replace(t);
+</script></body></html>
